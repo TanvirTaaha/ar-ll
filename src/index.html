@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="AR Hand Letter - Hold a floating 3D letter in your hand using augmented reality">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>AR Hand Letter</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- Hidden video element for camera feed -->
+    <video id="camera-feed" autoplay playsinline muted></video>
+
+    <!-- Main canvas for camera + 3D overlay -->
+    <canvas id="camera-canvas"></canvas>
+
+    <!-- Three.js overlay canvas -->
+    <canvas id="three-canvas"></canvas>
+
+    <!-- Hand landmark debug canvas (hidden by default) -->
+    <canvas id="landmark-canvas"></canvas>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader-content">
+            <div class="loader-ring">
+                <div class="ring-segment"></div>
+                <div class="ring-segment"></div>
+                <div class="ring-segment"></div>
+            </div>
+            <h1>AR Hand Letter</h1>
+            <p id="loading-status">Initializing camera...</p>
+        </div>
+    </div>
+
+    <!-- Permission Screen -->
+    <div id="permission-screen" class="hidden">
+        <div class="permission-card">
+            <div class="permission-icon">📸</div>
+            <h2>Camera Access Required</h2>
+            <p>This AR experience needs your camera to detect hands and place 3D letters in your view.</p>
+            <button id="grant-permission-btn">Enable Camera</button>
+        </div>
+    </div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="hidden">
+        <!-- Top status bar -->
+        <div class="hud-top">
+            <div class="status-pill" id="tracking-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Show your hand</span>
+            </div>
+            <button class="icon-btn" id="toggle-camera-btn" title="Switch Camera">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 16V7a2 2 0 00-2-2h-3l-2-2h-2L9 5H6a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2z" />
+                    <circle cx="12" cy="11" r="3" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Letter Picker (bottom) -->
+        <div class="hud-bottom">
+            <div class="letter-picker" id="letter-picker">
+                <div class="picker-handle" id="picker-handle">
+                    <div class="handle-bar"></div>
+                </div>
+                <div class="picker-header">
+                    <span class="picker-title">Choose a Letter</span>
+                    <div class="style-toggle" id="style-toggle">
+                        <button class="style-btn active" data-style="gold">🥇 Gold</button>
+                        <button class="style-btn" data-style="chrome">🪞 Chrome</button>
+                        <button class="style-btn" data-style="neon">💜 Neon</button>
+                    </div>
+                </div>
+                <div class="letter-grid" id="letter-grid">
+                    <!-- Letters populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
