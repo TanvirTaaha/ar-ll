@@ -17,7 +17,7 @@ LABEL description="AR Hand Letter - Web-based augmented reality hand tracking"
 RUN rm -rf /usr/share/nginx/html/*
 
 # Copy custom nginx config
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy static assets from builder
 COPY --from=builder /app/src/ /usr/share/nginx/html/
