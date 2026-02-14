@@ -12,7 +12,8 @@ services:
     image: ar-ll:latest
     container_name: ar-ll
     ports:
-      - "3090:80"
+      - "3090:443"  # Primary HTTPS port (matches user expectation)
+      - "3080:80"   # Secondary HTTP port (just in case)
     restart: unless-stopped
     networks:
       - ar-ll

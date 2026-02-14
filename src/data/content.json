@@ -1,0 +1,38 @@
+{
+    "categories": [
+        {
+            "id": "pages",
+            "name": "Pages",
+            "items": [
+                {
+                    "type": "page",
+                    "id": "doc1",
+                    "label": "Invoice",
+                    "text": "INVOICE #1024\n\nTotal: $500.00\n\n- Item A: $200\n- Item B: $300"
+                },
+                {
+                    "type": "page",
+                    "id": "doc2",
+                    "label": "blueprint",
+                    "text": "PROJECT ALPHA\n\nCONFIDENTIAL\n\nSchematic v2.0"
+                },
+                {
+                    "type": "page",
+                    "id": "doc3",
+                    "label": "Note",
+                    "text": "Don't forget to\nbuy milk!"
+                }
+            ]
+        },
+        {
+            "id": "letters",
+            "name": "Letters",
+            "items": "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        },
+        {
+            "id": "numbers",
+            "name": "Numbers",
+            "items": "0123456789"
+        }
+    ]
+}

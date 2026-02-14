@@ -23,7 +23,12 @@
     // ---- State ----
     const state = {
         currentLetter: 'A',
+        contentType: 'letter', // 'letter' or 'page'
         currentStyle: 'gold',
+        handDetected: false,
+        isPinching: false,
+        pinchStart: 0,
+        // Raw palm data from MediaPipe
         handDetected: false,
         // Raw palm data from MediaPipe
         palmCenter3D: { x: 0.5, y: 0.5, z: 0 },
@@ -60,13 +65,35 @@
         pickerHandle: document.getElementById('picker-handle'),
         letterPicker: document.querySelector('.letter-picker'),
         styleToggle: document.getElementById('style-toggle'),
+        categoryTabs: document.createElement('div'), // Will be added dynamically
+        cameraLoadingOverlay: document.createElement('div'),
     };
+
+    // Camera Switch Overlay
+    dom.cameraLoadingOverlay.id = 'camera-switch-overlay';
+    dom.cameraLoadingOverlay.className = 'hidden';
+    dom.cameraLoadingOverlay.innerHTML = `
+        <div class="loader-content">
+            <div class="loader-ring">
+                <div class="ring-segment"></div>
+                <div class="ring-segment"></div>
+                <div class="ring-segment"></div>
+            </div>
+            <p>Switching Camera...</p>
+        </div>
+    `;
+    document.body.appendChild(dom.cameraLoadingOverlay);
+
 
     const cameraCtx = dom.cameraCanvas.getContext('2d');
 
     // ---- Three.js Setup ----
     let scene, threeCamera, renderer, letterGroup;
     let shadowPlane;
+
+    function randomInRange(min, max) {
+        return Math.random() * (max - min) + min;
+    }
 
     function initThree() {
         scene = new THREE.Scene();
@@ -128,7 +155,33 @@
         letterGroup.visible = false;
         scene.add(letterGroup);
 
-        createLetterMesh(state.currentLetter, state.currentStyle);
+        // Initial render logic depending on type
+        if (state.currentLetter) {
+            updateContentMesh();
+        }
+    }
+
+    // ---- Content Creation Hub ----
+    function updateContentMesh() {
+        // Clear previous
+        while (letterGroup.children.length > 0) {
+            const child = letterGroup.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(m => m.dispose());
+                } else {
+                    child.material.dispose();
+                }
+            }
+            letterGroup.remove(child);
+        }
+
+        if (state.contentType === 'page') {
+            createPageMesh(state.currentLetter, state.currentStyle); // currentLetter holds item object for pages
+        } else {
+            createLetterMesh(state.currentLetter, state.currentStyle);
+        }
     }
 
     // ---- Material Presets ----
@@ -165,20 +218,6 @@
 
     // ---- 3D Letter Creation ----
     function createLetterMesh(letter, style) {
-        // Clear previous
-        while (letterGroup.children.length > 0) {
-            const child = letterGroup.children[0];
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) {
-                if (Array.isArray(child.material)) {
-                    child.material.forEach(m => m.dispose());
-                } else {
-                    child.material.dispose();
-                }
-            }
-            letterGroup.remove(child);
-        }
-
         const material = getMaterial(style);
         const depth = 0.15;
         const size = CONFIG.letterScale;
@@ -238,6 +277,76 @@
             });
             letterGroup.add(new THREE.Mesh(glowGeo, glowMat));
         }
+
+        state.letterMesh = mesh;
+    }
+
+    function createPageMesh(item, style) {
+        // Page dimensions (A4-ish)
+        const width = 0.4;
+        const height = 0.55;
+        const depth = 0.005;
+
+        // Simulate page texture (or PDF if we had one)
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 724;
+        const ctx = canvas.getContext('2d');
+
+        // White paper background
+        ctx.fillStyle = '#fdfdfd';
+        ctx.fillRect(0, 0, 512, 724);
+
+        // Header
+        ctx.fillStyle = '#111';
+        ctx.font = 'bold 32px Inter, Arial, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(item.label || "Document", 40, 60);
+
+        // Body Text
+        ctx.font = '24px Inter, Arial, sans-serif';
+        ctx.fillStyle = '#444';
+        const lines = (item.text || "Sample Text").split('\n');
+        let y = 120;
+        lines.forEach(line => {
+            ctx.fillText(line, 40, y);
+            y += 36;
+        });
+
+        // Add some "lines" to look like a document
+        ctx.fillStyle = '#ddd';
+        for (let i = 0; i < 10; i++) {
+            ctx.fillRect(40, y + (i * 40), 432, 2);
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        const pageMat = new THREE.MeshStandardMaterial({
+            map: texture,
+            roughness: 0.6,
+            metalness: 0.1, // Paper isn't metal
+            side: THREE.DoubleSide,
+        });
+
+        const pageGeo = new THREE.BoxGeometry(width, height, depth);
+
+        // IMPORTANT: Move geometry so bottom-right corner is at (0,0,0) locally
+        // Original center is (0,0,0). 
+        // Bottom-Right corner is at (width/2, -height/2, 0).
+        // We want (width/2, -height/2, 0) to be at world (0,0,0).
+        // So we translate geometry by (-width/2, +height/2, 0) relative to mesh origin?
+        // Wait, if bottom-right is anchor, then mesh origin should be at bottom-right.
+        // Geometry needs to be offset so that its bottom-right vertex is at (0,0,0).
+        // Geometry center is (0,0,0). Bottom-Right is (w/2, -h/2).
+        // To make Bottom-Right (0,0,0), we subtract (w/2, -h/2).
+        // So translate geometry by (-width/2, height/2, 0).
+        pageGeo.translate(-width / 2, height / 2, 0);
+
+        const mesh = new THREE.Mesh(pageGeo, pageMat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        letterGroup.add(mesh);
 
         state.letterMesh = mesh;
     }
@@ -368,6 +477,25 @@
         state.palmCenter3D.y = frame.palmCenter.y;
         state.palmCenter3D.z = frame.palmCenter.z;
         state.palmQuaternion.copy(frame.quaternion);
+
+        // Detect Pinch (Index tip vs Thumb tip)
+        const indexTip = landmarks[8];
+        const thumbTip = landmarks[4];
+        const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y, (indexTip.z || 0) - (thumbTip.z || 0));
+
+        // Threshold for pinch (tunable)
+        const pinchThreshold = 0.05; // ~5% of screen
+        const wasPinching = state.isPinching;
+        state.isPinching = distance < pinchThreshold;
+
+        // Update pinch position (midpoint)
+        if (state.isPinching) {
+            state.pinchCenter = {
+                x: (indexTip.x + thumbTip.x) / 2,
+                y: (indexTip.y + thumbTip.y) / 2,
+                z: ((indexTip.z || 0) + (thumbTip.z || 0)) / 2
+            };
+        }
     }
 
     // ---- Camera ----
@@ -418,10 +546,30 @@
     }
 
     async function switchCamera() {
-        stopCamera();
-        state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
-        await startCamera();
-        startDetectionLoop();
+        if (state.cameraReady) {
+            updateLoadingStatus('Switching camera...');
+            dom.loadingScreen.classList.remove('hidden', 'fade-out');
+
+            // Release existing stream tracks immediately to free hardware
+            stopCamera();
+
+            // Short delay to allow browser to release camera resource properly
+            await new Promise(r => setTimeout(r, 300));
+
+            state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+
+            try {
+                await startCamera();
+            } catch (err) {
+                console.error('Camera switch failed:', err);
+                // Fallback attempt
+                state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+                await startCamera();
+            }
+
+            startDetectionLoop();
+            hideLoading();
+        }
     }
 
     // ---- Detection Loop ----
@@ -452,95 +600,164 @@
         if (state.handDetected && letterGroup) {
             letterGroup.visible = true;
 
-            // --- Position: map normalized [0,1] to Three.js world coords ---
+            // --- Position Logic ---
+            let targetX, targetY, targetZ;
+            let targetQ;
+
             const aspect = window.innerWidth / window.innerHeight;
             const fovRad = THREE.MathUtils.degToRad(CONFIG.fov);
             const halfH = Math.tan(fovRad / 2) * threeCamera.position.z;
             const halfW = halfH * aspect;
 
-            // Map landmark x,y (0..1) to world coordinates
-            const targetX = (state.palmCenter3D.x - 0.5) * 2 * halfW;
-            const targetY = -(state.palmCenter3D.y - 0.5) * 2 * halfH;
-            // Z: MediaPipe z is relative depth — scale and offset
-            const targetZ = -state.palmCenter3D.z * CONFIG.depthScale;
+            if (state.contentType === 'page') {
+                // Page Mode: Only follows pinch
+                if (state.isPinching && state.pinchCenter) {
+                    // Map pinch center (0..1) to world
+                    targetX = (state.pinchCenter.x - 0.5) * 2 * halfW;
+                    targetY = -(state.pinchCenter.y - 0.5) * 2 * halfH;
+                    targetZ = -state.pinchCenter.z * CONFIG.depthScale;
 
-            const targetPos = new THREE.Vector3(targetX, targetY - CONFIG.floatHeight, targetZ);
+                    // Rotation: Look at camera (billboard)
+                    const dummyObj = new THREE.Object3D();
+                    dummyObj.position.set(targetX, targetY, targetZ);
+                    dummyObj.lookAt(threeCamera.position);
+                    targetQ = dummyObj.quaternion;
 
-            // Smooth position with lerp
-            state.smoothPosition.lerp(targetPos, CONFIG.positionSmoothing);
+                } else {
+                    // Not pinching: Fly off screen (Top Right corner)
+                    targetX = 2.5; // Offscreen Right
+                    targetY = 2.5; // Offscreen Up
+                    targetZ = -3;
+                    targetQ = new THREE.Quaternion(); // Default orientation
+                }
+            } else {
+                // Letter Mode: Use existing palm tracking
+                targetX = (state.palmCenter3D.x - 0.5) * 2 * halfW;
+                targetY = -(state.palmCenter3D.y - 0.5) * 2 * halfH;
+                targetZ = -state.palmCenter3D.z * CONFIG.depthScale;
+                const bobY = Math.sin(state.animationTime * CONFIG.bobSpeed) * CONFIG.bobAmplitude;
+                targetY -= CONFIG.floatHeight;
+                targetY += bobY;
 
-            // Add subtle bob
-            const bobY = Math.sin(state.animationTime * CONFIG.bobSpeed) * CONFIG.bobAmplitude;
+                // Rotation
+                const wobbleQ = new THREE.Quaternion().setFromEuler(
+                    new THREE.Euler(
+                        Math.sin(state.animationTime * 0.7) * CONFIG.wobbleAmount,
+                        Math.sin(state.animationTime * 0.5) * CONFIG.wobbleAmount,
+                        0
+                    )
+                );
+                targetQ = state.palmQuaternion.clone().multiply(wobbleQ);
+            }
 
+            const targetPos = new THREE.Vector3(targetX, targetY, targetZ);
+
+            // Smooth position (faster for pages to feel responsive/snappy)
+            state.smoothPosition.lerp(targetPos, state.contentType === 'page' ? 0.2 : CONFIG.positionSmoothing);
             letterGroup.position.copy(state.smoothPosition);
-            letterGroup.position.y += bobY;
 
-            // --- Rotation: slerp toward hand quaternion ---
-            // Add a subtle idle wobble on top
-            const wobbleQ = new THREE.Quaternion().setFromEuler(
-                new THREE.Euler(
-                    Math.sin(state.animationTime * 0.7) * CONFIG.wobbleAmount,
-                    Math.sin(state.animationTime * 0.5) * CONFIG.wobbleAmount,
-                    0
-                )
-            );
-
-            const targetQ = state.palmQuaternion.clone().multiply(wobbleQ);
+            // Smooth rotation
             state.smoothQuaternion.slerp(targetQ, CONFIG.rotationSmoothing);
             letterGroup.quaternion.copy(state.smoothQuaternion);
 
-            // Shadow follows
+            // Shadow
             shadowPlane.position.x = state.smoothPosition.x;
             shadowPlane.position.z = state.smoothPosition.z;
 
-            // Subtle scale pulse
-            const pulse = 1 + Math.sin(state.animationTime * 2) * 0.008;
-            letterGroup.scale.setScalar(pulse);
+            // Pulse for letters only
+            if (state.contentType !== 'page') {
+                const pulse = 1 + Math.sin(state.animationTime * 2) * 0.008;
+                letterGroup.scale.setScalar(pulse);
+            } else {
+                letterGroup.scale.setScalar(1);
+            }
 
         } else if (letterGroup) {
-            letterGroup.visible = false;
+            // Check if page needs to finish flying out
+            if (state.contentType === 'page' && !state.handDetected) {
+                // Fly out if hand lost
+                state.smoothPosition.lerp(new THREE.Vector3(2.5, 2.5, -3), 0.1);
+                letterGroup.position.copy(state.smoothPosition);
+                // Hide if far enough?
+                if (state.smoothPosition.x > 2.0) letterGroup.visible = false;
+                else letterGroup.visible = true;
+            } else {
+                letterGroup.visible = false;
+            }
         }
 
         renderer.render(scene, threeCamera);
     }
 
     // ---- UI ----
-    function buildLetterGrid() {
-        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const digits = '0123456789';
-        const symbols = '♥★♦♠♣☺✿';
-        const allChars = letters + digits + symbols;
-
+    function buildLetterGrid(data) {
         dom.letterGrid.innerHTML = '';
+        dom.categoryTabs.innerHTML = '';
 
-        for (const char of allChars) {
-            const btn = document.createElement('button');
-            btn.className = 'letter-cell' + (char === state.currentLetter ? ' active' : '');
-            btn.textContent = char;
-            btn.setAttribute('data-letter', char);
-            btn.addEventListener('click', () => selectLetter(char));
-            dom.letterGrid.appendChild(btn);
-        }
+        if (!data || !data.categories) return;
+
+        data.categories.forEach((cat, index) => {
+            // Create Tab
+            const tab = document.createElement('button');
+            tab.className = 'category-tab' + (index === 0 ? ' active' : '');
+            tab.textContent = cat.name;
+            tab.onclick = () => {
+                document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                renderGridItems(cat.items);
+            };
+            dom.categoryTabs.appendChild(tab);
+
+            if (index === 0) renderGridItems(cat.items);
+        });
     }
 
-    function selectLetter(letter) {
-        state.currentLetter = letter;
-        document.querySelectorAll('.letter-cell').forEach(el => {
-            el.classList.toggle('active', el.getAttribute('data-letter') === letter);
+    function renderGridItems(items) {
+        dom.letterGrid.innerHTML = '';
+
+        // Check if items are objects (Pages) or strings
+        const isPage = typeof items !== 'string';
+        const list = isPage ? items : items.split('');
+
+        list.forEach(item => {
+            const btn = document.createElement('button');
+            const label = isPage ? (item.label || item.id) : item;
+
+            btn.className = 'letter-cell' + (label === (isPage ? (state.currentLetter.label || state.currentLetter.id) : state.currentLetter) ? ' active' : '');
+
+            // If page, use label text, else char
+            btn.textContent = isPage ? label.substring(0, 2).toUpperCase() : label;
+            if (isPage) {
+                btn.style.fontSize = '0.8rem';
+                btn.title = label;
+            }
+
+            btn.addEventListener('click', () => {
+                selectContent(item, isPage ? 'page' : 'letter');
+            });
+            dom.letterGrid.appendChild(btn);
         });
-        createLetterMesh(letter, state.currentStyle);
+    }
+
+    function selectContent(item, type) {
+        state.contentType = type;
+        state.currentLetter = item;
+
+        document.querySelectorAll('.letter-cell').forEach(el => el.classList.remove('active'));
+        // Re-highlight logic is tricky with object comparison, simplest is just re-render grid or find by text
+        // But for MVP just update mesh
+        updateContentMesh();
     }
 
     function initStyleToggle() {
         dom.styleToggle.querySelectorAll('.style-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const style = btn.getAttribute('data-style');
-                state.currentStyle = style;
-                dom.styleToggle.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                createLetterMesh(state.currentLetter, style);
-            });
+            const style = btn.getAttribute('data-style');
+            state.currentStyle = style;
+            dom.styleToggle.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            updateContentMesh();
         });
+
     }
 
     function initPickerCollapse() {
@@ -580,45 +797,110 @@
 
     // ---- Init ----
     async function init() {
-        updateLoadingStatus('Preparing 3D engine...');
-        initThree();
+        // --- 1. Secure Context Check ---
+        if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            const httpsUrl = location.href.replace(/^http:/, 'https:');
+            dom.loadingStatus.innerHTML = `
+                Authentication required for camera access.<br>
+                <a href="${httpsUrl}" style="color: #a855f7; text-decoration: underline; margin-top: 10px; display: inline-block;">Switch to Secure Mode (HTTPS)</a>
+            `;
+            dom.loadingScreen.querySelector('.loader-ring').style.display = 'none';
+            return;
+        }
 
-        updateLoadingStatus('Loading hand detection...');
-        initHandDetection();
+        // Create category selector container
+        dom.categoryTabs.className = 'category-tabs';
+        dom.letterPicker.insertBefore(dom.categoryTabs, dom.letterGrid);
 
-        buildLetterGrid();
-        initStyleToggle();
-        initPickerCollapse();
-        initCameraToggle();
-        window.addEventListener('resize', onResize);
+        // Define tasks for parallel execution
+        const tasks = [
+            // 1. Load Data
+            (async () => {
+                updateLoadingStatus('Loading assets...');
+                try {
+                    const response = await fetch('./src/data/content.json');
+                    const data = await response.json();
+                    buildLetterGrid(data);
+                } catch (e) {
+                    console.error('Failed to load content, fallback to default', e);
+                    buildLetterGrid({ categories: [{ id: 'default', name: 'Letters', items: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }] });
+                }
+            })(),
+
+            // 2. Init Three.js (synchronous but heavy) and Hand Detection
+            (async () => {
+                updateLoadingStatus('Preparing 3D engine...');
+                initThree();
+                updateLoadingStatus('Loading AI models...');
+                initHandDetection();
+            })(),
+
+            // 3. Camera (slowest, starts independent)
+            (async () => {
+                if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
+                updateLoadingStatus('Accessing camera...');
+                try {
+                    await startCamera();
+                } catch (e) {
+                    console.warn('Camera failed during parallel init:', e);
+                    throw e; // Check later
+                }
+            })()
+        ];
 
         try {
-            updateLoadingStatus('Accessing camera...');
-            await startCamera();
+            await Promise.all(tasks);
 
-            updateLoadingStatus('Starting hand detection...');
+            updateLoadingStatus('Starting experience...');
             startDetectionLoop();
-
             hideLoading();
             showHUD();
             animate();
         } catch (err) {
+            console.error('Camera init error:', err);
             hideLoading();
+
+            // Show custom error messages based on error type
+            const errorTitle = dom.permissionScreen.querySelector('h2');
+            const errorMsg = dom.permissionScreen.querySelector('p');
+            const btn = dom.grantBtn;
+
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                errorTitle.textContent = 'Camera Permission Denied';
+                errorMsg.innerHTML = 'Please enable camera access in your browser settings:<br><b>Settings > Site Settings > Camera</b><br>then refresh the page.';
+                btn.textContent = 'Try Again';
+            } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                errorTitle.textContent = 'No Camera Found';
+                errorMsg.textContent = 'No camera device was detected on your system.';
+                btn.style.display = 'none';
+            } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                errorTitle.textContent = 'Camera In Use';
+                errorMsg.textContent = 'Your camera may be used by another application. Please close it and try again.';
+            }
+
             dom.permissionScreen.classList.remove('hidden');
 
-            dom.grantBtn.addEventListener('click', async () => {
+            // Allow retry
+            btn.onclick = async () => {
                 try {
-                    await startCamera();
+                    updateLoadingStatus('Retrying camera...');
                     dom.permissionScreen.classList.add('hidden');
+                    dom.loadingScreen.classList.remove('hidden', 'fade-out');
+
+                    await startCamera();
+
                     startDetectionLoop();
+                    hideLoading();
                     showHUD();
                     animate();
-                } catch (e) {
-                    alert('Camera access is required for this AR experience. Please enable camera permissions in your browser settings.');
+                } catch (retryErr) {
+                    console.error('Retry failed:', retryErr);
+                    // If retry fails, reload page to reset permission state prompts in some browsers
+                    location.reload();
                 }
-            });
+            };
 
-            animate();
+            animate(); // Ensure 3D scene renders even without camera (just empty background)
         }
     }
 

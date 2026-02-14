@@ -27,6 +27,7 @@
 html, body {
     width: 100%;
     height: 100%;
+    height: 100dvh; /* Dynamic viewport height for mobile */
     overflow: hidden;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background: #000;
@@ -301,7 +302,38 @@ html, body {
 }
 
 .letter-picker.collapsed {
-    transform: translateY(calc(100% - 56px));
+    transform: translateY(calc(100% - 64px)); /* Increased handle visibility */
+}
+
+/* Category Tabs */
+.category-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 0 0 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.category-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.category-tab {
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.category-tab.active {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 2px 10px var(--primary-glow);
 }
 
 .picker-handle {
@@ -437,4 +469,22 @@ html, body {
 .letter-picker::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.15);
     border-radius: 4px;
+}
+
+/* ---- Camera Switch Overlay ---- */
+#camera-switch-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: opacity 0.3s ease;
+}
+#camera-switch-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
 }
