@@ -1,12 +1,21 @@
+name: ar-ll
+networks:
+  ar-ll:
+    name: ar-ll
+    driver: bridge
+
 services:
-  ar-hand-letter:
+  ar-ll:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ar-hand-letter
+    image: ar-ll:latest
+    container_name: ar-ll
     ports:
-      - "8080:80"
+      - "3090:80"
     restart: unless-stopped
+    networks:
+      - ar-ll
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/health"]
       interval: 30s
