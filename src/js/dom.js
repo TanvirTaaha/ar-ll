@@ -18,6 +18,7 @@ export const dom = {
     toggleCameraBtn: document.getElementById('toggle-camera-btn'),
     pickerHandle: document.getElementById('picker-handle'),
     letterPicker: document.querySelector('.letter-picker'),
+    hudBottom: document.querySelector('.hud-bottom'),
     styleToggle: document.getElementById('style-toggle'),
     categoryTabs: document.createElement('div'),
     cameraLoadingOverlay: document.createElement('div'),

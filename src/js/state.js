@@ -27,4 +27,6 @@ export const state = {
     cameraReady: false,
     letterMesh: null,
     pickerCollapsed: true,
+    /** When false, the bottom pane (content picker) is hidden */
+    bottomPaneVisible: false,
 };

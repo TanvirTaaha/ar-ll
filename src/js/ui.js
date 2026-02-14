@@ -15,8 +15,15 @@ export function hideLoading() {
     setTimeout(() => dom.loadingScreen.classList.add('hidden'), 600);
 }
 
+export function applyBottomPaneVisibility() {
+    if (dom.hudBottom) {
+        dom.hudBottom.classList.toggle('hidden', !state.bottomPaneVisible);
+    }
+}
+
 export function showHUD() {
     dom.hud.classList.remove('hidden');
+    applyBottomPaneVisibility();
 }
 
 /**
