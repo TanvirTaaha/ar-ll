@@ -1,37 +1,51 @@
 # 🖐️ AR Hand Letter
 
-A web-based augmented reality application that detects your hand via camera and renders a realistic floating 3D letter as if held by your hand. Works on **Android**, **iOS**, **iPadOS**, and **desktop** browsers.
+A web-based augmented reality app that uses your device camera and hand tracking to place a floating 3D page or text in your hand. The page follows your open palm, and zoom is controlled by how spread your fingertips are. Supports **PDF documents** and **text/paragraphs** from a simple JSON config. Works on **Android**, **iOS**, **iPadOS**, and **desktop** browsers.
 
 ---
 
-## ✨ Features
+## Features
 
-- **Real-time hand tracking** — 21-landmark detection via [MediaPipe Hands](https://google.github.io/mediapipe/solutions/hands.html)
-- **Accurate 3D positioning** — Letter rotation and position computed from a proper 3D coordinate frame using cross-product palm plane math
-- **Three material styles** — Gold (metallic PBR), Chrome (mirror), Neon (glowing)
-- **Full character set** — A–Z, 0–9, and special symbols
-- **Smooth physics** — Quaternion slerp rotation, vector lerp positioning, gentle floating bob
-- **Front/rear camera toggle** — Works on all devices
-- **Mobile-first design** — Responsive glassmorphism UI with safe-area support
-- **Zero build step** — Pure HTML/CSS/JS, all libraries from CDN
-- **Dockerized** — One-command deployment via Docker Compose
+- **Open-palm tracking** — Hand centroid from all 21 MediaPipe landmarks (palm + fingers) drives the **center** of the 3D page (not a corner).
+- **Fingertip zoom** — Polygon formed by **fingertips only** (no palm): area controls zoom level. Fingers spread → zoom 5; fingers pinched together → zoom 1. Adaptive min/max over recent frames.
+- **PDF rendering** — Page content can be real PDFs: first page is rendered via PDF.js and used as the 3D texture. Fallback to text from `content.json` if no `pdfUrl` or load fails.
+- **Text & paragraphs** — Letters category and text blocks support full sentences/paragraphs: center-aligned, word-wrapped, with configurable font and padding.
+- **Content from JSON** — `src/data/content.json` defines categories (e.g. Pages, Letters, Numbers). First page in the list is the default. Add entries with `pdfUrl` for PDFs or text for descriptions.
+- **Three material styles** — Gold (metallic), Chrome (mirror), Neon (glow).
+- **Front/rear camera toggle** — Works on phones and desktops.
+- **Modular codebase** — ES modules: `app`, `config`, `state`, `dom`, `scene`, `handTracking`, `camera`, `animation`, `ui`, `resize`.
+- **Zero build step** — Pure HTML/CSS/JS; Three.js, MediaPipe, and PDF.js from CDN.
+- **Docker** — One-command run with Docker Compose (HTTPS on 3090, HTTP on 3080).
 
 ---
 
-## 📁 Project Structure
+## Project structure
 
 ```
-ar-hand-letter/
-├── src/                        # Application source
-│   ├── index.html              # Entry point
+ll/
+├── src/
+│   ├── index.html          # Entry; loads scripts and PDF.js
 │   ├── css/
-│   │   └── style.css           # Dark glassmorphism theme
-│   └── js/
-│       └── app.js              # Camera, hand tracking, 3D rendering
-├── docker/
-│   └── nginx.conf              # Nginx config with security headers
-├── Dockerfile                  # Multi-stage build (nginx-alpine)
-├── docker-compose.yml          # Container orchestration
+│   │   └── style.css       # Dark glassmorphism, content list, HUD
+│   ├── js/
+│   │   ├── app.js          # Init, content load, wiring
+│   │   ├── config.js       # CONFIG (smoothing, zoom, text, etc.)
+│   │   ├── state.js        # Shared state (hand, zoom, content)
+│   │   ├── dom.js          # DOM refs and camera overlay
+│   │   ├── scene.js        # Three.js scene, materials, letter/page mesh, PDF texture
+│   │   ├── handTracking.js # MediaPipe hands, centroid, fingertip polygon area → zoom
+│   │   ├── camera.js       # getUserMedia, start/stop/switch camera
+│   │   ├── animation.js    # Render loop: position from centroid, scale from zoom
+│   │   ├── ui.js           # Content list, style toggle, picker, loading/HUD
+│   │   └── resize.js       # Window resize for Three.js
+│   └── data/
+│       ├── content.json    # Categories and items (pages with pdfUrl, letters, numbers)
+│       ├── hello.pdf       # Optional dummy PDF
+│       └── files/          # PDFs referenced by pdfUrl (e.g. happy-birthday-rifah.pdf)
+├── nginx/
+│   └── nginx.conf          # Nginx config (e.g. SSL, security headers)
+├── Dockerfile              # Nginx Alpine image serving src
+├── docker-compose.yml      # Service ar-ll, ports 3090 (HTTPS), 3080 (HTTP)
 ├── .dockerignore
 ├── .gitignore
 └── README.md
@@ -39,42 +53,31 @@ ar-hand-letter/
 
 ---
 
-## 🚀 Quick Start
+## Quick start
 
-### Local Development (no Docker)
+### Local (no Docker)
 
-Serve the `src/` directory with any static file server:
+Serve the **`src/`** directory so that `./data/content.json` and `./data/files/*.pdf` resolve correctly:
 
 ```bash
-# Using npx (no install needed)
-npx -y serve src -l 3000
-
-# Or Python
+# From project root
 python3 -m http.server 3000 --directory src
-
-# Or PHP
-php -S localhost:3000 -t src
+# Or
+npx -y serve src -l 3000
 ```
 
-Then open **http://localhost:3000** in your browser.
+Then open **http://localhost:3000** (use **https** if required for camera on your setup).
 
 ### Docker
 
 ```bash
-# Build and run
 docker compose up -d
-
-# App is available at http://localhost:8080
 ```
 
-Or build the image directly:
+- **HTTPS**: https://localhost:3090 (or https://\<your-ip\>:3090 on LAN)
+- **HTTP**: http://localhost:3080
 
-```bash
-docker build -t ar-hand-letter .
-docker run -d -p 8080:80 --name ar-hand-letter ar-hand-letter
-```
-
-### Stop / Remove
+Use HTTPS when the server is configured for it; otherwise you may see “plain HTTP request sent to HTTPS port” (400).
 
 ```bash
 docker compose down
@@ -82,92 +85,127 @@ docker compose down
 
 ---
 
-## 📱 Mobile Testing
+## Content configuration
 
-1. Start the server (local or Docker)
-2. Find your machine's local IP:
-   ```bash
-   hostname -I       # Linux
-   ipconfig getifaddr en0  # macOS
-   ```
-3. Open `http://<your-ip>:8080` on your mobile device (same WiFi)
+`src/data/content.json` defines what appears in the bottom content list and what is rendered in 3D.
 
-> **iOS Note**: Safari requires HTTPS for camera access. For local development, use a tool like [mkcert](https://github.com/FiloSottile/mkcert) or serve with SSL:
-> ```bash
-> npx -y serve src -l 3000 --ssl
-> ```
+- **Pages** — Items with `type: "page"` and optional `pdfUrl`. If `pdfUrl` is set, that PDF’s first page is rendered as the 3D page texture; otherwise (or on error) the `label`/`text` fields are used as a text fallback.
+- **Letters / Numbers** — String of characters; each character or full text block can be shown (letters support sentences/paragraphs).
 
----
+Example:
 
-## 🛠️ Tech Stack
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| Camera | WebRTC `getUserMedia` | Cross-platform camera capture |
-| Hand Detection | MediaPipe Hands v0.4 | Real-time 21-landmark hand detection (WASM/GPU) |
-| 3D Rendering | Three.js r128 | WebGL-based realistic letter rendering |
-| Serving | Nginx 1.25 (Alpine) | Production-grade static file serving |
-| Container | Docker + Docker Compose | Reproducible deployment |
-
----
-
-## 🧠 How It Works
-
-### Hand Tracking → 3D Orientation
-
-The app builds a **proper 3D coordinate frame** from the MediaPipe palm landmarks:
-
-```
-v_up     = normalize(wrist → middle_mcp)      // hand's "up" vector
-v_right  = normalize(index_mcp → pinky_mcp)   // across the palm
-v_normal = cross(v_up, v_right)                // palm normal (depth axis)
+```json
+{
+  "categories": [
+    {
+      "id": "pages",
+      "name": "Pages",
+      "items": [
+        {
+          "type": "page",
+          "id": "happy-birthday",
+          "label": "Happy Birthday",
+          "text": "Happy Birthday to you!",
+          "pdfUrl": "data/files/happy-birthday-rifah.pdf"
+        }
+      ]
+    },
+    { "id": "letters", "name": "Letters", "items": "ABCDEFGHIJKLMNOPQRSTUVWXYZ" },
+    { "id": "numbers", "name": "Numbers", "items": "0123456789" }
+  ]
+}
 ```
 
-These three orthogonal vectors form a **rotation matrix** converted to a **quaternion** that drives the letter's exact 3D orientation — including depth tilt, roll, and yaw. Position is mapped from normalized landmark coordinates to Three.js world space using the camera's FOV for accurate projection.
-
-**Smoothing** uses quaternion `slerp` for rotation and `lerp` for position, giving the letter a fluid, physically grounded feel without jitter.
+The first item of the first category is used as the default content on load.
 
 ---
 
-## ⚙️ Configuration
+## How it works
 
-Key parameters in `src/js/app.js`:
+### Hand centroid (page center)
 
-```javascript
-const CONFIG = {
-    positionSmoothing: 0.22,   // Lower = smoother, higher = more responsive
-    rotationSmoothing: 0.18,   // Quaternion slerp factor
-    bobAmplitude: 0.012,       // Floating bob height
-    bobSpeed: 1.6,             // Bob oscillation speed
-    letterScale: 0.35,         // 3D letter size
-    floatHeight: 0.08,         // Height above palm center
-    handConfidence: 0.7,       // Min detection confidence (0–1)
-};
-```
+- All **21** MediaPipe hand landmarks (wrist + fingers) are averaged in normalized (x, y, z).
+- That **centroid** is mapped to 3D world space with the camera FOV and used as the **center** of the page (not a corner).
+- Smoothed with `handCentroidSmoothing` and `positionSmoothing` to reduce jitter.
 
----
+### Fingertip polygon → zoom
 
-## 🌐 Browser Compatibility
+- Only **fingertips** (landmarks 4, 8, 12, 16, 20) are used; palm is excluded.
+- Points are ordered by angle around their centroid so the polygon is non–self-intersecting.
+- **Area** is computed with the shoelace formula in normalized (x, y).
+- A rolling window of recent areas is used to get min/max; current area is mapped to zoom level **1–5** (configurable `zoomMin`/`zoomMax`). Fingers spread → large area → zoom 5; fingers pinched → small area → zoom 1.
+- Zoom is smoothed and applied as the 3D page scale.
 
-| Browser | Status |
-|---|---|
-| Chrome (Android) | ✅ Full support |
-| Safari (iOS 15+) | ✅ Requires HTTPS |
-| Safari (iPadOS 15+) | ✅ Requires HTTPS |
-| Chrome (Desktop) | ✅ Full support |
-| Firefox (Desktop) | ✅ Full support |
-| Edge (Desktop) | ✅ Full support |
+### 3D page
+
+- **Position**: Hand centroid (smoothed).
+- **Orientation**: Always upright (billboard: looks at camera).
+- **Scale**: From fingertip polygon area (zoom 1–5).
+- **Texture**: From PDF (PDF.js) when `pdfUrl` is set; otherwise from text/label in `content.json`.
 
 ---
 
-## 📄 License
+## Configuration
+
+Tunables live in **`src/js/config.js`**:
+
+| Key | Purpose |
+|-----|--------|
+| `positionSmoothing` | Lerp factor for 3D position (lower = smoother). |
+| `handCentroidSmoothing` | Lerp for normalized hand centroid before mapping to 3D. |
+| `letterScale` | Base size of 3D content. |
+| `textBlockMaxWidth`, `textBlockFontSize`, `textBlockLineHeight`, `textBlockPadding` | Text/paragraph layout for letter blocks. |
+| `handConfidence` | MediaPipe min detection confidence (0–1). |
+| `depthScale`, `fov` | Depth mapping and camera FOV. |
+| `zoomMin`, `zoomMax` | Zoom range (e.g. 1 = pinched, 5 = spread). |
+| `zoomSmoothing` | Lerp for zoom scale per frame. |
+| `areaHistoryFrames` | Number of area samples for adaptive zoom min/max (~1.5 s at 60 fps). |
+
+---
+
+## Mobile / network testing
+
+1. Start the server (local or Docker).
+2. On the same WiFi, open the app using your machine’s IP:
+   - **HTTPS**: `https://<your-ip>:3090` (Docker)
+   - **HTTP**: `http://<your-ip>:3000` (local) or `http://<your-ip>:3080` (Docker)
+3. Grant camera permission when prompted.
+
+**iOS / Safari**: Camera usually requires a secure context (HTTPS or localhost). For local dev over HTTP, use a tunnel or serve with SSL (e.g. `npx -y serve src -l 3000 --ssl` or mkcert).
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|-------|------------|
+| Camera | WebRTC `getUserMedia` |
+| Hand detection | MediaPipe Hands (21 landmarks) |
+| 3D | Three.js r128 (WebGL) |
+| PDF | PDF.js (first page → canvas texture) |
+| Serving | Nginx (Docker) or any static server locally |
+
+---
+
+## Browser support
+
+| Browser | Notes |
+|--------|--------|
+| Chrome (Android / Desktop) | Full support |
+| Safari (iOS / iPadOS 15+) | Full support; HTTPS typically required for camera |
+| Firefox, Edge (Desktop) | Full support |
+
+---
+
+## License
 
 MIT
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- [MediaPipe](https://google.github.io/mediapipe/) by Google — hand tracking AI
-- [Three.js](https://threejs.org/) — 3D rendering engine
+- [MediaPipe](https://google.github.io/mediapipe/) — Hand tracking
+- [Three.js](https://threejs.org/) — 3D rendering
+- [PDF.js](https://mozilla.github.io/pdf.js/) — PDF rendering
 - [Inter](https://rsms.me/inter/) — UI typeface
