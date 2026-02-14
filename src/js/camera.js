@@ -1,27 +1,87 @@
 /* ============================================
    AR Hand Letter — Camera (getUserMedia)
-   Safari- and Chrome-compatible switch logic.
+   Chrome Android/iOS: deviceId for reliable front/back.
+   Safari: no video.load() on release, longer delay for back.
    ============================================ */
 
 import { state } from './state.js';
 import { dom } from './dom.js';
 
-const VIDEO_READY_TIMEOUT_MS = 8000;
-const RELEASE_DELAY_MS = 600;
+const VIDEO_READY_TIMEOUT_MS = 10000;
 
-export async function startCamera() {
-    const constraints = {
-        video: {
-            facingMode: state.facingMode,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-        },
+/** Safari: skip video.load() on release (can break next stream); use longer delay for back camera */
+function isSafari() {
+    const ua = navigator.userAgent || '';
+    return /Safari/i.test(ua) && !/Chrom|CriOS|FxiOS/i.test(ua);
+}
+
+/** Chrome (Android/iOS) or Chromium-based */
+function isChrome() {
+    const ua = navigator.userAgent || '';
+    return /Chrome|CriOS|Chromium/i.test(ua);
+}
+
+/** Delay after releasing stream before requesting new one (ms) */
+function getReleaseDelayMs() {
+    return isSafari() ? 1200 : 500;
+}
+
+let videoInputDevices = [];
+
+async function getVideoDevices() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        videoInputDevices = devices.filter((d) => d.kind === 'videoinput');
+        return videoInputDevices;
+    } catch (e) {
+        videoInputDevices = [];
+        return [];
+    }
+}
+
+/** Pick deviceId for desired facingMode (user = front, environment = back). Prefer deviceId on Chrome. */
+function getVideoConstraints() {
+    const wantFront = state.facingMode === 'user';
+    const devices = videoInputDevices;
+
+    if (isChrome() && Array.isArray(devices) && devices.length > 0) {
+        const byLabel = wantFront
+            ? devices.find((d) => /front|user|selfie|facing front/i.test(d.label || ''))
+            : devices.find((d) => /back|environment|rear|facing back/i.test(d.label || ''));
+        if (byLabel?.deviceId) {
+            return { video: { deviceId: { exact: byLabel.deviceId } }, audio: false };
+        }
+        const byCapabilities = devices.find((d) => {
+            try {
+                const cap = d.getCapabilities?.();
+                const facing = cap?.facing?.length ? cap.facing[0] : cap?.facing;
+                return wantFront ? facing === 'user' : facing === 'environment';
+            } catch (_) {
+                return false;
+            }
+        });
+        if (byCapabilities?.deviceId) {
+            return { video: { deviceId: { exact: byCapabilities.deviceId } }, audio: false };
+        }
+    }
+
+    return {
+        video: { facingMode: state.facingMode },
         audio: false,
     };
+}
+
+export async function startCamera() {
+    if (videoInputDevices.length === 0) {
+        await getVideoDevices();
+    }
+
+    const constraints = getVideoConstraints();
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         dom.video.srcObject = stream;
+        getVideoDevices().then(() => {}).catch(() => {});
 
         const ready = new Promise((resolve, reject) => {
             const onReady = () => {
@@ -42,13 +102,17 @@ export async function startCamera() {
                 dom.video.removeEventListener('loadedmetadata', onReady);
                 dom.video.removeEventListener('loadeddata', onReady);
                 dom.video.removeEventListener('canplay', onReady);
+                dom.video.removeEventListener('playing', onReady);
             };
 
             dom.video.addEventListener('loadedmetadata', onReady, { once: true });
             dom.video.addEventListener('loadeddata', onReady, { once: true });
             dom.video.addEventListener('canplay', onReady, { once: true });
+            dom.video.addEventListener('playing', onReady, { once: true });
 
-            if (dom.video.readyState >= 2) onReady();
+            if (dom.video.readyState >= 2 && dom.video.videoWidth > 0) {
+                onReady();
+            }
         });
 
         const timeout = new Promise((_, reject) =>
@@ -84,15 +148,17 @@ export function stopCamera() {
 
 function releaseCamera() {
     stopCamera();
-    if (dom.video) {
+    if (dom.video && !isSafari()) {
         dom.video.load();
     }
     state.cameraReady = false;
 }
 
+const SWITCH_TIMEOUT_MS = 15000;
+
 let switching = false;
 
-export async function switchCamera(startDetectionLoop, updateLoadingStatus, hideLoading) {
+export async function switchCamera(startDetectionLoop, stopDetectionLoop, resetTrackingState, updateLoadingStatus, hideLoading) {
     if (switching || !state.cameraReady) return;
     switching = true;
     if (dom.toggleCameraBtn) dom.toggleCameraBtn.disabled = true;
@@ -100,14 +166,22 @@ export async function switchCamera(startDetectionLoop, updateLoadingStatus, hide
     updateLoadingStatus('Switching camera...');
     dom.loadingScreen.classList.remove('hidden', 'fade-out');
 
-    try {
+    const doSwitch = async () => {
+        stopDetectionLoop();
+        if (resetTrackingState) resetTrackingState();
         releaseCamera();
-        await new Promise((r) => setTimeout(r, RELEASE_DELAY_MS));
+        await new Promise((r) => setTimeout(r, getReleaseDelayMs()));
 
         state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
-
         await startCamera();
         startDetectionLoop();
+    };
+
+    try {
+        const timeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Switch timeout')), SWITCH_TIMEOUT_MS)
+        );
+        await Promise.race([doSwitch(), timeout]);
     } catch (err) {
         console.error('Camera switch failed:', err);
         state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';

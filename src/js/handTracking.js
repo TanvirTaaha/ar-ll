@@ -171,6 +171,10 @@ export function initHandDetection(updateLoadingStatus) {
 
 let detecting = false;
 
+export function stopDetectionLoop() {
+    detecting = false;
+}
+
 export function startDetectionLoop() {
     if (detecting) return;
     detecting = true;
@@ -183,4 +187,18 @@ export function startDetectionLoop() {
         requestAnimationFrame(detect);
     }
     detect();
+}
+
+/** Reset hand/tracking state when camera is switched so UI and 3D start fresh. */
+export function resetTrackingState() {
+    state.handDetected = false;
+    state.handCentroid = null;
+    state.smoothHandCentroid.x = 0.5;
+    state.smoothHandCentroid.y = 0.5;
+    state.smoothHandCentroid.z = 0;
+    state.fingertipPolygonArea = 0;
+    state.zoomLevel = CONFIG.zoomMin ?? 1;
+    areaHistory = [];
+    if (dom.statusText) dom.statusText.textContent = 'Show your hand';
+    if (dom.trackingStatus) dom.trackingStatus.classList.remove('tracking');
 }

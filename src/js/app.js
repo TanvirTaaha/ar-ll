@@ -20,7 +20,7 @@ function setDefaultContent(data) {
         state.contentType = 'letter';
     }
 }
-import { initHandDetection, startDetectionLoop } from './handTracking.js';
+import { initHandDetection, startDetectionLoop, stopDetectionLoop, resetTrackingState } from './handTracking.js';
 import { startCamera, stopCamera, switchCamera } from './camera.js';
 import { startAnimation } from './animation.js';
 import {
@@ -50,7 +50,7 @@ async function init() {
     }
 
     const doSwitchCamera = () =>
-        switchCamera(startDetectionLoop, updateLoadingStatus, hideLoading);
+        switchCamera(startDetectionLoop, stopDetectionLoop, resetTrackingState, updateLoadingStatus, hideLoading);
 
     const tasks = [
         (async () => {
