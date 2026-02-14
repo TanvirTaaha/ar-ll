@@ -83,6 +83,18 @@ Use HTTPS when the server is configured for it; otherwise you may see “plain H
 docker compose down
 ```
 
+### GitHub Pages (CI)
+
+A workflow in `.github/workflows/deploy-pages.yml` runs on **push to `main`** and deploys the app to **GitHub Pages**.
+
+1. **Enable GitHub Pages**: repo **Settings → Pages → Build and deployment → Source**: **GitHub Actions**.
+2. Push to `main`; the workflow copies the contents of `src/` into the artifact (site root has `index.html`, `js/`, `css/`, `data/`), then uploads and deploys.
+
+**Static paths** are correct because the deployed root is the contents of `src/`:
+- `./data/content.json` → `/data/content.json`
+- `data/files/*.pdf` → `/data/files/...`
+- `js/app.js`, `css/style.css` → `/js/`, `/css/`
+
 ---
 
 ## Content configuration
